@@ -25,7 +25,6 @@
 #include "../structure/jtree.cpp"
 #include "../structure/jque.cpp"
 #include "../structure/jheap.cpp"
-#include "../jthread/jlock.cpp"
 #define LT false
 #define ET true
 #define BUFFER_SIZE 64
@@ -452,7 +451,7 @@ namespace jean
     private:
         /* data */
 
-        jlock_rw jrw;
+        pthread_rwlock_t prw;
         jector<pollfd> pfds;
         std::atomic_int __size;
 
@@ -474,6 +473,7 @@ namespace jean
 
     jpoll::jpoll() : pfds(), __size(0)
     {
+        pthread_rwlock_init(&prw,0);
     }
 
     jpoll::~jpoll()
@@ -488,16 +488,16 @@ namespace jean
         pfd.events = POLLIN | POLLERR | POLLRDHUP;
         pfd.revents = 0;
         setNoneBlocking(sockfd);
-        jrw.write_lock();
+        pthread_rwlock_wrlock(&prw);
         pfds.push_back(pfd);
-        jrw.write_unlock();
+        pthread_rwlock_unlock(&prw);
         __size++;
     }
 
     /* delete a listened sockfd */
     void jpoll::p_del(int sockfd)
     {
-        jrw.write_lock();
+        pthread_rwlock_wrlock(&prw);
         for (int i = 0; i < pfds.size(); i++)
         {
             if (pfds[i].fd == sockfd)
@@ -507,22 +507,22 @@ namespace jean
                 break;
             }
         }
-        jrw.write_unlock();
+        pthread_rwlock_unlock(&prw);
     }
 
     /* block, wait for POLLIN event*/
     void jpoll::p_wait()
     {
         int r = -1;
-        jrw.read_lock();
+        pthread_rwlock_rdlock(&prw);
         if (pfds.is_empty())
         {
-            jrw.read_unlock();
+            pthread_rwlock_unlock(&prw);
             return;
         }
         cout<<"poll wait\n"<<endl;
         r = poll(&(pfds[0]), pfds.size(), -1);
-        jrw.read_unlock();
+        pthread_rwlock_unlock(&prw);
         return;
     }
 
