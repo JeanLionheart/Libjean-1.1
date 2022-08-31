@@ -164,10 +164,10 @@ namespace jean
     template <typename T>
     void jector<T>::release()
     {
-        if (__size == 0)
+        if (__size <8)
         {
-            free(jec);
-            jec=NULL;
+            __capacity=4;
+            refill();
             return;
         }
         __capacity = (__size + 1) / 2;
