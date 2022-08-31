@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <malloc.h>
 #include <iostream>
+using std::cout;
+using std::endl;
 namespace jean
 {
     template <typename T>
@@ -12,137 +14,29 @@ namespace jean
         /* data */
         void operator=(jector<T> &);
         T *jec;
-        unsigned long __size;
-        unsigned long __capacity;
-        void copy(T *&oldlp, T *&newlp, long l, long new_l, long nums, long step = 1, bool dir = 0) // 0 left; 1 right
-        {                                                                                       // copy
-            long cnt = nums;
-            long i, j;
-            if (!dir)
-            {
-                i = l;
-                j = new_l;
-            }
-            else
-            {
-                i = l + nums - 1;
-                j = new_l + nums - 1;
-            }
-            for (; cnt > 0; i += step, j += step, cnt--)
-            {
-                new (&newlp[j]) T(oldlp[i]);
-            }
-        }
-        void move_left(long start)
-        { // from start(not include start) elements all move to left
-            copy(jec, jec, start + 1, start, __size - start - 1, 1, 0);
-        }
-        void move_right(long start)
-        { // from start(include start) elements all move to right
-            copy(jec, jec, start, start + 1, __size - start - 1, -1, 1);
-        }
-        void test_and_realloc()
-        {
-            if (__size >= __capacity)
-            {
-                T *old_jec = jec;
-                jec = (T *)malloc(__capacity * 2 * sizeof(T));
-                /* jec = new T[__capacity * 2]; */
-                __capacity *= 2;
-                copy(old_jec, jec, 0, 0, __size-1);
-                /* delete[] old_jec; */
-                free(old_jec);
-            }
-        }
-        void test_and_free()
-        {
-            if (__size < __capacity / 3)
-            {
-                T *old_jec = jec;
-                jec = (T *)malloc((__capacity / 2>1?__capacity / 2:1) * sizeof(T));
-                /* jec = new T[__capacity / 2]; */
-                __capacity=(__capacity / 2>1?__capacity / 2:1);
-                copy(old_jec, jec, 0, 0, __size);
-                /* delete[] old_jec; */
-                free(old_jec);
-            }
-        }
+        int __size;
+        int __capacity;
+
+        void refill();
 
     public:
         jector(jector<T> &);
         jector(jector<T> &&);
         jector(/* args */);
         ~jector();
-        T &operator[](const long n)
+        T &operator[](const int n)
         {
             return *(jec + n);
         }
-        long find(T&val){
-            for(long i=0;i<__size;i++){
-                if((*this)[i]==val){
-                    return i;
-                }
-            }
-            return -1;
-        }
-        // jector<T> &operator=(jector<T> &cop)
-        // {
-        //     init();
-        //     for (long i = 0; i < cop.size(); i++)
-        //     {
-        //         (*this)[i]=cop[i]
-        //     }
-        //     return *this;
-        // }
-        void push_back(T &val) // copy construct
-        {
-            long loc=__size;
-            __size++;
-            test_and_realloc();
-            new (jec + loc) T(val);
-        }
-        void push_back(T &&val) // copy construct
-        {
-            long loc=__size;
-            __size++;
-            test_and_realloc();
-            new (jec + loc) T(std::move(val));
-        }
-        T pop_back()
-        {
-            test_and_free();
-            __size--;
-            return *(jec + __size);
-        }
-        void insert_on(long addr, const T &val) // insert val to addr,
-        {
-            if (addr > __size)
-                return;
-            __size++;
-            test_and_realloc();
-            move_right(addr);
-            jec[addr] = val;
-        }
-        void del(long addr) // del the jec[addr]
-        {
-            if (addr >= capacity())
-                return;
-            move_left(addr);
-            __size--;
-            test_and_free();
-        }
-        unsigned long size()
-        {
-            return __size;
-        }
-        long capacity()
-        {
-            return __capacity;
-        }
-        bool is_empty()
-        {
-            return (__size == 0);
-        }
+        void push_back(T &);
+        void push_back(T &&);
+        T pop_back();
+        void del(int);
+        void insert(int);
+        void release();
+        int size();
+        int capacity();
+        bool empty();
     };
 
     template <typename T>
@@ -150,19 +44,19 @@ namespace jean
     {
     }
 
-    template <typename T> // the higher copy constructor will call its push_back,and push_back will call lower constructor.untill the lowest constructor,such as long
+    template <typename T> // the higher copy constructor will call its push_back,and push_back will call lower constructor.untill the lowest constructor,such as int
     jector<T>::jector(jector<T> &cop) : jec((T *)malloc(sizeof(T) * 8)) /*new T[8]*/, __size(0), __capacity(8)
     { // copy constructor,deep
-        for (long i = 0; i < cop.size(); i++)
+        for (int i = 0; i < cop.size(); i++)
         {
             push_back(cop[i]);
         }
     }
 
-    template <typename T> // the higher copy constructor will call its push_back,and push_back will call lower constructor.untill the lowest constructor,such as long
+    template <typename T> // the higher copy constructor will call its push_back,and push_back will call lower constructor.untill the lowest constructor,such as int
     jector<T>::jector(jector<T> &&cop) : jec((T *)malloc(sizeof(T) * 8)) /*new T[8]*/, __size(0), __capacity(8)
     { // copy constructor,deep
-        for (long i = 0; i < cop.size(); i++)
+        for (int i = 0; i < cop.size(); i++)
         {
             push_back(cop[i]);
         }
@@ -172,7 +66,122 @@ namespace jean
     jector<T>::~jector()
     {
         /* delete[] jec; */
+        if(jec)free(jec);
+    }
+
+    template <typename T>
+    void jector<T>::refill()
+    {
+        __capacity *= 2;
+        T *new_jec = (T *)malloc(sizeof(T) * __capacity);
+        int len = sizeof(T) * __capacity / 2;
+        long *oldl = (long *)jec;
+        long *newl = (long *)new_jec;
+        int i;
+        for (i = 8; i <= len; i += 8)
+        {
+            *newl = *oldl;
+            newl++;
+            oldl++;
+        }
+        if (i != len)
+        {
+            i -= 8;
+            if (len > 8)
+            {
+                newl--;
+                oldl--;
+            }
+            char *nc = (char *)newl;
+            char *oc = (char *)oldl;
+            for (int j = i; j <= len; j++)
+            {
+                *nc = *oc;
+                nc++;
+                oc++;
+            }
+        }
         free(jec);
+        jec = new_jec;
+    }
+
+    template <typename T>
+    void jector<T>::push_back(T &v)
+    {
+        __size++;
+        if (__size > __capacity)
+        {
+            refill();
+        }
+        int len = sizeof(T);
+        new (jec + __size - 1) T(v);
+    }
+
+    template <typename T>
+    void jector<T>::push_back(T &&v)
+    {
+        __size++;
+        if (__size > __capacity)
+        {
+            refill();
+        }
+        int len = sizeof(T);
+        new (jec + __size - 1) T(std::move(v));
+    }
+
+    template <typename T>
+    T jector<T>::pop_back()
+    {
+        T r((*this)[__size - 1]);
+        __size--;
+        return r;
+    }
+
+    template <typename T>
+    void jector<T>::del(int seq)
+    {
+        for (int i = seq; i < __size; i++)
+        {
+            (*this)[i] = (*this)[i + 1];
+        }
+        __size--;
+    }
+
+    template <typename T>
+    void jector<T>::insert(int seq)
+    {
+        __size++;
+        if (__size > __capacity)
+        {
+            refill();
+        }
+        for (int i = __size-1; i>seq ; i--)
+        {
+            (*this)[i] = (*this)[i - 1];
+        }
+    }
+
+    template <typename T>
+    void jector<T>::release()
+    {
+        if (__size == 0)
+        {
+            free(jec);
+            jec=NULL;
+            return;
+        }
+        __capacity = (__size + 1) / 2;
+        refill();
+    }
+
+    template <typename T>
+    int jector<T>::size(){
+        return __size;
+    }
+
+    template <typename T>
+    int jector<T>::capacity(){
+        return __capacity;
     }
 }
 #endif
