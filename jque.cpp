@@ -1,9 +1,8 @@
 #ifndef __JQUE__
 #define __JQUE__
-#include "../jallocator/jallocator_t.cpp"
 #include "../jallocator/jalloc_conc.cpp"
-#include "../jallocator/jalloc_origin.cpp"
 #include <mutex>
+#include<pthread.h>
 #include <iostream>
 #include <atomic>
 #define mfence asm volatile("mfence" :: \
@@ -25,7 +24,7 @@ namespace jean
         node_t *head, *tail;
         std::mutex muh, mut;
         std::atomic_int _size;
-
+        pthread_spinlock_t psplockh,psplockt;
     public:
         jque();
         ~jque();
@@ -52,6 +51,8 @@ namespace jean
         head = (node_t *)jalloc.allocate();
         tail = head;
         head->next = nullptr;
+        pthread_spin_init(&psplockh);
+        pthread_spin_init(&psplockt);
     }
 
     template <typename T, template <typename N> class jalloc_t>
@@ -66,11 +67,11 @@ namespace jean
         new_tail->next = nullptr;
         T*new_value=(T*)data_jalloc.allocate();
         new(new_value)T(v);
-        mut.lock();
+        pthread_spin_lock(&psplockt);
         tail->val=new_value;
         tail->next = new_tail;
         tail = new_tail;
-        mut.unlock();        
+        pthread_spin_unlock(&psplockt);       
         _size++;
     }
 
@@ -81,11 +82,11 @@ namespace jean
         new_tail->next = nullptr;
         T*new_value=(T*)data_jalloc.allocate();
         new(new_value)T(std::move(v));
-        mut.lock();
+        pthread_spin_lock(&psplockt);
         tail->val=new_value;
         tail->next = new_tail;
         tail = new_tail;
-        mut.unlock();        
+        pthread_spin_unlock(&psplockt);       
         _size++;
     }
 
@@ -98,10 +99,10 @@ namespace jean
             _size++;
             return nullptr;
         }        
-        muh.lock();
+        pthread_spin_lock(&psplockh);
         node_t *r = head;
         head = r->next;
-        muh.unlock();
+        pthread_spin_unlock(&psplockh);
         T *res=r->val;
         jalloc.deallocate(r);
         return res;
@@ -113,10 +114,10 @@ namespace jean
         node_t *new_head = (node_t *)jalloc.allocate();
         new_head->val=(T*)data_jalloc.allocate();
         new(new_head->val)T(v);
-        muh.lock();
+        pthread_spin_lock(&psplockh);
         new_head->next = head;
         head = new_head;
-        muh.unlock();
+        pthread_spin_unlock(&psplockh);
         _size++;
     }
 
@@ -126,10 +127,10 @@ namespace jean
         node_t *new_head = (node_t *)jalloc.allocate();
         new_head->val=(T*)data_jalloc.allocate();
         new(new_head->val)T(std::move(v));
-        muh.lock();
+        pthread_spin_lock(&psplockh);
         new_head->next = head;
         head = new_head;
-        muh.unlock();
+        pthread_spin_unlock(&psplockh);
         _size++;
     }
 }
