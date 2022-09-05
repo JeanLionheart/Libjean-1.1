@@ -157,8 +157,9 @@ namespace jean
         struct node_t
         {
             /* data */
-            T *val;
-            std::atomic<node_t *> next;
+            std::atomic<T *>val;
+            node_t*next;
+            //std::atomic_bool f;
         };
         jalloc_t<T> data_jalloc;
         jalloc_t<node_t> jalloc;
@@ -166,9 +167,9 @@ namespace jean
         std::atomic_int size, head_thread, tail_thread;
 
     public:
-        void push_head(T &);
-        void push_tail(T &);
-        T *pop_head();
+        void push_front(T &);
+        void push_back(T &);
+        T *pop_front();
         int get_size()
         {
             return size;
@@ -182,6 +183,7 @@ namespace jean
     {
         node_t *node = (node_t *)jalloc.allocate();
         node->next = nullptr;
+        //node->f=0;
         node->val = (T *)data_jalloc.allocate();
         head.store(node);
         tail.store(head.load());
@@ -193,38 +195,35 @@ namespace jean
     }
 
     template <typename T, template <typename N> class jalloc_t>
-    void jqueue<T, jalloc_t>::push_head(T &v) // only read old_head.no danger
+    void jqueue<T, jalloc_t>::push_front(T &v) // only read old_head.no danger
     {
         node_t *new_node = (node_t *)jalloc.allocate();
         new_node->val = (T *)data_jalloc.allocate();
         new (new_node->val) T(v);
-        node_t *new_next = head.load();
-        bool flag=0;
-        while (!flag)
-        {
-            new_node->next.store(new_next);
-            flag=head.compare_exchange_strong(new_next, new_node);
-        }
+        new_node->next = head.load();
+        while(!head.compare_exchange_strong(new_node->next,new_node));
 
         size++;
     }
 
     template <typename T, template <typename N> class jalloc_t>
-    void jqueue<T, jalloc_t>::push_tail(T &v)
+    void jqueue<T, jalloc_t>::push_back(T &v)
     {
         node_t *new_node = (node_t *)jalloc.allocate();
-        new_node->next = NULL;
-        new_node->val = (T *)data_jalloc.allocate();
+        new_node->val=nullptr;
+        T*val = (T *)data_jalloc.allocate();
         node_t *old_tail = tail.load();
         while (!tail.compare_exchange_strong(old_tail, new_node))
             ;
-        new (old_tail->val) T(v); // write old_tail
+        new (val) T(v); // write old_tail
         old_tail->next = new_node;
+        old_tail->val=val;
+        //old_tail->f=1;
         size++;
     }
 
     template <typename T, template <typename N> class jalloc_t>
-    T *jqueue<T, jalloc_t>::pop_head()
+    T *jqueue<T, jalloc_t>::pop_front()
     {
         int k = size--;
         if (k <= 0)
@@ -237,9 +236,10 @@ namespace jean
         bool flag = 0;
         while (!flag)
         {
-            if (old_head->next) // when true, the write old_tail is done
+
+            if (old_head->val) // when true, the write old_tail is done
             {
-                flag = head.compare_exchange_strong(old_head, old_head->next.load());
+                flag = head.compare_exchange_strong(old_head, old_head->next);
             }
         }
         T *r = old_head->val;
